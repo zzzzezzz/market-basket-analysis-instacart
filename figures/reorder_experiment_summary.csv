@@ -1,0 +1,2 @@
+training_customers,validation_customers,test_customers,training_records,validation_records,test_records,candidate_products,positive_examples,negative_examples,positive_percentage,xgboost_positive_weight,xgboost_selected_threshold
+91846,19681,19682,5929752,1274978,1269931,49468,828824,7645837,9.78002541930586,9.24828856792757,0.7

@@ -1,3 +1,22 @@
+# Instacart raw datasets
+data/*.csv
+data/*.zip
+
+# R temporary and session files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.log
+
 # History files
 .Rhistory
 .Rapp.history

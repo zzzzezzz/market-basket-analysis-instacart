@@ -1,0 +1,2 @@
+sample_size,minimum_support,minimum_confidence,minimum_rule_length,maximum_rule_length,number_of_rules
+50000,0.005,0.2,2,3,45
