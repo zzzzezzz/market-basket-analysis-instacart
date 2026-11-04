@@ -459,6 +459,12 @@ xgb_model <- xgb.train(
   verbose = 0
 )
 
+# Generate predictions on validation data
+xgb_val_prob <- predict(
+  xgb_model,
+  dvalidation
+)
+
 
 # 8. XGBOOST VALIDATION AND THRESHOLD SELECTION ------------
 
