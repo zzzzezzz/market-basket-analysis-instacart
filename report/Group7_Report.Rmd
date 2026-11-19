@@ -1,0 +1,382 @@
+---
+title: "Market Basket Analysis and Customer Behaviour in Large-Scale Retail Transaction Data"
+subtitle: "Group 7 Project Report"
+author: "Group 7"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: readable
+    code_folding: hide
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.align = "center", out.width = "95%"
+)
+
+# Find the project root by walking up from the directory used by Knit.
+# This works whether the Rmd is opened from the project root or report/.
+start_dir <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+candidates <- unique(normalizePath(
+  file.path(start_dir, c(".", "..", "../..", "../../..")),
+  winslash = "/", mustWork = FALSE
+))
+root_ok <- vapply(candidates, function(path) {
+  file.exists(file.path(path, "Group7_instacart_project.Rproj")) &&
+    file.exists(file.path(path, "run_all.R")) &&
+    dir.exists(file.path(path, "scripts")) &&
+    dir.exists(file.path(path, "data"))
+}, logical(1))
+
+if (!any(root_ok)) {
+  stop(
+    "Could not locate the Group 7 project root. Open the ",
+    "Group7_instacart_project.Rproj file in RStudio, then open this report.\n",
+    "Knit started from: ", start_dir
+  )
+}
+
+project_root <- candidates[which(root_ok)[1]]
+# Set the working directory used by subsequent R Markdown chunks.
+# Do not call setwd() in the setup chunk: knitr manages chunk directories
+# and otherwise emits a directory-restoration warning.
+knitr::opts_knit$set(root.dir = project_root)
+
+required_scripts <- file.path("scripts", c(
+  "1_setup.R", "2_data_profiling.R", "3_ordering_patterns.R",
+  "4_product_analysis.R", "5_association_rule.R",
+  "6_customer_segmentation.R", "7_reorder_prediction.R"
+))
+required_data <- file.path("data", c(
+  "orders.csv", "order_products__prior.csv",
+  "order_products__train.csv", "products.csv",
+  "aisles.csv", "departments.csv"
+))
+required_files <- c("run_all.R", required_scripts, required_data)
+required_paths <- file.path(project_root, required_files)
+missing_files <- required_files[!file.exists(required_paths)]
+
+if (length(missing_files)) {
+  stop(
+    "The report found the project root at: ", project_root, "\n",
+    "But these files are genuinely absent from that location:\n",
+    paste(missing_files, collapse = "\n"), "\n\n",
+    "Scripts must be in scripts/ and the six Kaggle CSVs must be in data/."
+  )
+}
+
+figures_dir <- file.path(project_root, "figures")
+results_dir <- file.path(project_root, "results")
+
+# Create output folders before any analysis script attempts to write files.
+dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(project_root, "report"), recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r run-analysis, include=FALSE}
+# Re-run the complete analysis during knitting.
+# root.dir above makes this chunk execute from project_root.
+if (!identical(normalizePath(getwd(), winslash = "/", mustWork = TRUE),
+               normalizePath(project_root, winslash = "/", mustWork = TRUE))) {
+  stop("Knitting is not running from the project root: ", getwd(),
+       "\nExpected: ", project_root)
+}
+
+# Ensure the master script's log destination exists before it starts.
+dir.create(file.path(project_root, "results"), recursive = TRUE, showWarnings = FALSE)
+source(file.path(project_root, "run_all.R"), local = .GlobalEnv)
+```
+
+# Abstract
+
+This project examines customer purchasing behaviour in a large-scale online grocery transaction dataset using the Instacart Market Basket Analysis data. The analysis combines exploratory data analysis, product-level purchasing analysis, association rule mining, customer segmentation and supervised machine learning for repeat-purchase prediction.
+
+The workflow is implemented in R. It investigates order timing, basket composition, frequently purchased products and departments, product co-occurrence patterns, differences between customer groups, and the likelihood that a customer will purchase a previously purchased product again. Apriori association rule mining, K-means clustering, Logistic Regression and XGBoost are used.
+
+# 1. Introduction
+
+Online grocery platforms generate large volumes of transactional data. Analysing these records can reveal customer preferences, purchasing frequency, product relationships and repeat-purchase behaviour. Such information can support inventory planning, targeted promotions, product placement and recommendation strategies.
+
+## 1.1 Aim and objectives
+
+The aim is to analyse large-scale retail transaction data to identify purchasing patterns, segment customers according to shopping behaviour, and predict repeat purchases.
+
+The objectives are to:
+
+1. Profile the transaction data and examine its structure and quality.
+2. Explore order timing, basket size and purchasing patterns.
+3. Identify popular products and departments.
+4. Discover product associations using Apriori.
+5. Segment customers using behavioural features and K-means.
+6. Build and evaluate repeat-purchase prediction models.
+7. Provide a reproducible R workflow and report.
+
+# 2. Dataset and data acquisition
+
+## 2.1 Source
+
+The project uses the [Instacart Market Basket Analysis dataset on Kaggle](https://www.kaggle.com/competitions/instacart-market-basket-analysis). It contains anonymised grocery order and product-level information.
+
+## 2.2 Dataset files
+
+| File | Description |
+|---|---|
+| `orders.csv` | Order-level information, including customer, order sequence, day and hour |
+| `order_products__prior.csv` | Products purchased in prior orders |
+| `order_products__train.csv` | Products associated with training orders |
+| `products.csv` | Product names and category identifiers |
+| `aisles.csv` | Aisle identifiers and names |
+| `departments.csv` | Department identifiers and names |
+
+The source data used in the project has these dimensions:
+
+| Dataset | Rows | Columns |
+|---|---:|---:|
+| Orders | 3,421,083 | 7 |
+| Prior order products | 32,434,489 | 4 |
+| Training order products | 1,384,617 | 4 |
+| Products | 49,688 | 4 |
+| Aisles | 134 | 2 |
+| Departments | 21 | 2 |
+
+The original CSV files are not included in the repository. To reproduce the work, download the dataset from Kaggle and place the six files in the project's `data/` directory, retaining the filenames above.
+
+# 3. Tools and analytical workflow
+
+The analysis was conducted in R and RStudio. The scripts use:
+
+- `data.table` for efficient manipulation of large transaction tables.
+- `ggplot2` for visualisation.
+- `arules` and `arulesViz` for association rule mining and visualisation.
+- `xgboost` for gradient-boosted tree modelling.
+- `pROC` for ROC-AUC evaluation.
+
+The workflow consists of seven stages: data loading and validation; data profiling; ordering-pattern analysis; product and department analysis; association rule mining; customer segmentation; and reorder prediction.
+
+The report executes `run_all.R` when knitted. The master script runs the seven analysis scripts in sequence and writes generated outputs to the `figures/` and `results/` folders. The setup chunk first locates the project root and switches the working directory to it before checking the scripts and local data files.
+
+# 4. Data loading and profiling
+
+The first stage loads the six CSV files and examines their dimensions, column names, data structures and contents. Profiling checks missing values, duplicate identifiers, unique customers, products and orders, and reorder information.
+
+The prior order-product table contains more than 32 million records, making efficient data manipulation important. The `data.table` package is used for handling large tables.
+
+The recorded profiling results indicate approximately 3.2 million prior orders. The average basket contains approximately 10.09 products, while the median basket contains 8 products. Approximately 59% of prior product records are marked as reorders.
+
+# 5. Ordering patterns and exploratory analysis
+
+This stage examines when customers place orders and the number of products in their baskets. Ordering behaviour is analysed by day of the week and hour of the day. Basket-size summaries are calculated from prior order-product records.
+
+The following section automatically includes PNG figures generated by the analysis scripts.
+
+
+```{r figures, echo=FALSE, out.width="85%", fig.show="asis"}
+png_files <- list.files(
+  file.path(project_root, "figures"),
+  pattern = "\\.png$",
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+
+if (length(png_files) == 0) {
+  stop("No PNG figures found in the project figures directory.")
+} else {
+  knitr::include_graphics(
+    normalizePath(png_files, winslash = "/", mustWork = TRUE)
+  )
+}
+```
+
+
+# 6. Product and department analysis
+
+Product analysis aggregates purchase records by product and combines purchase counts with product names and department information. This allows frequently purchased products and the distribution of purchases across departments to be examined.
+
+Department-level analysis provides a broader view of demand than product rankings alone. It can help identify categories that account for a substantial share of transactions.
+
+# 7. Market basket analysis: association rules
+
+## 7.1 Method
+
+Association rule mining identifies products that frequently occur together in shopping baskets. The project uses the Apriori algorithm from `arules`. To make the analysis computationally manageable, a random sample of 50,000 prior orders is used to construct transactions.
+
+The recorded Apriori settings are:
+
+| Parameter | Value |
+|---|---:|
+| Minimum support | 0.005 |
+| Minimum confidence | 0.20 |
+| Minimum rule length | 2 |
+| Maximum rule length | 3 |
+| Sampled transactions | 50,000 |
+
+Rules are sorted by lift. Support measures how frequently an itemset occurs; confidence measures how often the consequent occurs when the antecedent occurs; lift compares observed co-occurrence with that expected under independence.
+
+## 7.2 Recorded results and interpretation
+
+The recorded analysis produced 45 association rules. Average support was approximately 0.008545, maximum support was 0.02, maximum confidence was approximately 0.3812, and the minimum lift among the generated rules was approximately 1.422.
+
+A lift greater than 1 indicates a positive association. These rules describe co-occurrence patterns; they do not establish that purchasing one product causes a customer to purchase another. The sample and selected thresholds also influence the rules discovered.
+
+# 8. Customer segmentation
+
+## 8.1 Method
+
+K-means clustering is used to group customers with similar purchasing behaviour. Customer-level features include total orders, average basket size, reorder rate and average interval between orders. Features are scaled before clustering, and the final solution uses four clusters.
+
+## 8.2 Cluster profiles
+
+The recorded four-cluster solution produced the following profiles:
+
+| Cluster | Customers | Average orders | Average basket size | Reorder rate | Average interval (days) |
+|---|---:|---:|---:|---:|---:|
+| 1 | 34,413 | 12.01 | 19.25 | 0.464 | 16.36 |
+| 2 | 25,876 | 52.41 | 10.30 | 0.717 | 6.84 |
+| 3 | 71,999 | 6.82 | 7.74 | 0.251 | 21.66 |
+| 4 | 73,921 | 15.70 | 7.65 | 0.494 | 11.99 |
+
+## 8.3 Interpretation
+
+- **Cluster 1 – Large-basket shoppers:** Highest average basket size, approximately 19.25 products, with moderate order frequency.
+- **Cluster 2 – Highly engaged repeat shoppers:** Highest average order count and reorder rate, with the shortest average interval between orders.
+- **Cluster 3 – Lower-frequency shoppers:** Lowest average order frequency and reorder rate, and the longest average interval.
+- **Cluster 4 – Regular shoppers:** Moderate order frequency, basket size and reorder rate.
+
+These labels are descriptive interpretations of the observed profiles; they are not labels assigned by K-means itself.
+
+# 9. Reorder prediction
+
+## 9.1 Problem formulation
+
+The prediction task is binary classification. For a customer-product pair, the target indicates whether the customer purchases a previously purchased product in the target order.
+
+The candidate set is constructed from products each customer has purchased historically. Therefore, this is repeat-purchase prediction among historical customer-product candidates, not a general recommendation model for products a customer has never purchased.
+
+## 9.2 Features and models
+
+Historical customer-product features include:
+
+- `times_purchased`: number of previous purchases by the customer.
+- `last_order_number`: most recent order sequence in which the product was purchased.
+- `mean_cart_position`: average position of the product in the customer's cart.
+- `product_reorder_rate`: historical reorder rate for the customer-product pair.
+- `orders_since_last_purchase`: customer orders since the product was last purchased.
+
+The project compares Logistic Regression with XGBoost. The recorded modelling data contained 828,824 positive examples and 7,645,837 negative examples; the positive class represented approximately 9.78% of candidate records.
+
+The data is split at customer level into training, validation and test subsets. The validation set is used to select the XGBoost classification threshold, and the test set is used for final evaluation.
+
+## 9.3 Test-set results
+
+The recorded final test results are:
+
+| Metric | Logistic Regression (threshold 0.50) | XGBoost (threshold 0.70) |
+|---|---:|---:|
+| Accuracy | 0.9025 | 0.8576 |
+| Precision | 0.6091 | 0.3493 |
+| Recall | 0.0341 | 0.5125 |
+| F1-score | 0.0646 | 0.4154 |
+| ROC-AUC | 0.8085 | 0.8140 |
+
+## 9.4 Model comparison
+
+Logistic Regression has higher accuracy and precision at the selected threshold, but very low recall. It identifies only a small proportion of actual repeat purchases.
+
+XGBoost has substantially higher recall and F1-score, as well as a slightly higher ROC-AUC. This indicates a stronger balance between identifying repeat purchases and controlling false positives, although its precision and accuracy are lower.
+
+Accuracy must be interpreted in light of class imbalance. A model can achieve high accuracy by predicting the majority negative class while missing many actual repeat purchases. Recall, F1-score and ROC-AUC are therefore important complementary measures.
+
+## 9.5 Candidate-generation limitation
+
+Products in a target basket that are not in a customer's historical candidate set cannot be predicted by this model. The model should be interpreted as a historical repeat-purchase predictor, not a complete next-basket recommendation system.
+
+# 10. Discussion
+
+The analysis combines descriptive, unsupervised and supervised methods to examine different aspects of retail purchasing behaviour. Ordering analysis describes the timing and size of baskets. Product and department analysis identifies where purchase volume is concentrated. Association rules reveal co-occurrence patterns, while segmentation distinguishes customers by engagement, basket size and repeat-purchase behaviour.
+
+The prediction results demonstrate why evaluation metrics must be selected with the target distribution in mind. Logistic Regression has higher accuracy, but XGBoost provides much higher recall and F1-score at the selected thresholds. For identifying repeat purchases in this experiment, XGBoost provides the stronger balance.
+
+# 11. Limitations
+
+1. The dataset represents the transactions and customers included in the released Instacart data; results should not automatically be generalised to all grocery retailers.
+2. Apriori is applied to a sample of 50,000 prior orders rather than the complete transaction history.
+3. K-means results depend on the selected features, scaling and cluster count.
+4. The positive repeat-purchase class is substantially smaller than the negative class.
+5. The prediction candidate set excludes products that a customer has never purchased.
+6. Association indicates co-occurrence, not causation.
+
+# 12. Conclusion
+
+This project developed an R-based workflow for studying customer purchasing behaviour in the Instacart dataset. It covered data profiling, ordering patterns, product and department analysis, Apriori association rule mining, K-means customer segmentation and repeat-purchase prediction.
+
+The segmentation analysis identified four customer groups with different purchasing frequencies, basket sizes, reorder rates and order intervals. The association-rule analysis generated product co-occurrence rules from a sample of prior orders. In predictive modelling, XGBoost achieved higher recall, F1-score and ROC-AUC than Logistic Regression at the selected thresholds, while Logistic Regression achieved higher accuracy and precision.
+
+Overall, the project demonstrates how large-scale transaction data can be used to derive insights into purchasing behaviour and repeat purchasing. Future work could explore additional customer and product features, improved candidate generation and recommendation methods that include products not previously purchased.
+
+# 13. Reproducibility and instructions
+
+## 13.1 Project structure
+
+The expected project structure is:
+
+```text
+group 7/
+├── Group7_instacart_project.Rproj
+├── run_all.R
+├── data/
+│   ├── orders.csv
+│   ├── order_products__prior.csv
+│   ├── order_products__train.csv
+│   ├── products.csv
+│   ├── aisles.csv
+│   └── departments.csv
+├── scripts/
+│   ├── 1_setup.R
+│   ├── 2_data_profiling.R
+│   ├── 3_ordering_patterns.R
+│   ├── 4_product_analysis.R
+│   ├── 5_association_rule.R
+│   ├── 6_customer_segmentation.R
+│   └── 7_reorder_prediction.R
+├── figures/
+├── results/
+└── report/
+    ├── Group7_Report.Rmd
+    └── Group7_Report.html
+```
+
+## 13.2 Reproduction steps
+
+1. Install R and RStudio.
+2. Clone or download the [project GitHub repository](https://github.com/zzzzezzz/market-basket-analysis-instacart).
+3. Download the [Instacart dataset from Kaggle](https://www.kaggle.com/competitions/instacart-market-basket-analysis).
+4. Extract the six required CSV files into the project's `data/` directory.
+5. Open `Group7_instacart_project.Rproj` in RStudio.
+6. Run `run_all.R` using the **Source** button to execute the seven analysis scripts.
+7. Open `report/Group7_Report.Rmd` and click **Knit**. Knitting also runs the master analysis workflow to regenerate the report figures and outputs.
+
+The master script checks for required scripts, data files and packages, and records execution status in `results/master_run_log.csv`.
+
+## 13.3 Required packages
+
+The analysis scripts use `data.table`, `ggplot2`, `arules`, `arulesViz`, `xgboost` and `pROC`. The report additionally requires `rmarkdown` and `knitr`.
+
+```{r package-install, eval=FALSE}
+install.packages(c(
+  "data.table", "ggplot2", "arules", "arulesViz",
+  "xgboost", "pROC", "rmarkdown", "knitr"
+))
+```
+
+# References
+
+1. Instacart. *Instacart Market Basket Analysis*. Kaggle competition dataset. <https://www.kaggle.com/competitions/instacart-market-basket-analysis>.
+2. Hahsler, M., Grün, B., and Hornik, K. *arules: Mining Association Rules and Frequent Itemsets*. R package documentation. <https://CRAN.R-project.org/package=arules>.
+3. Chen, T., and Guestrin, C. (2016). XGBoost: A scalable tree boosting system. *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining*.
