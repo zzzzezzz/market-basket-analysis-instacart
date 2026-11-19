@@ -1,0 +1,42 @@
+Date of analysis -- 30-10-2026
+R version -- 4.6.1
+
+data counts dimension:
+  orders.csv -- 3,421,083 by 7
+  order_products_prior.csv --32,434,489 by 4
+  order_products_train.csv -- 1,384,617 by 4
+  departments.csv -- 21 by 2
+  aisles.csv -- 134 by 2
+  products.csv -- 49,688 by 4
+  
+missing values in dataset:
+  orders.csv:
+    column : days_since_prior_order -- 206,209
+  
+Duplicate-ID check:
+  none
+  
+reorder statistics:
+  reorder lines: 19,126,536
+  reorder percentage: 59%
+  
+  note: 59% of product lines were marked as reorders, it does not
+  mean 59% of customers reorder products or that 59% of orders are
+  entirely repeat purchases.
+  
+orders is sorted by time: 
+  day of the week - 7
+  hour of day - 24
+  orders by time - 7*24 = 168
+  
+basket size:
+  basket size is the number of unique product in an order
+  num of unique orders with product lines - 3,214,874
+  average basket size - 10.09
+  median basket size - 8
+  min basket size = 1
+  max basket size = 145
+  
+
+  
+

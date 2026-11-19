@@ -1,0 +1,8 @@
+"script","status","minutes"
+"1_setup.R","COMPLETED",0.02
+"2_data_profiling.R","COMPLETED",0.05
+"3_ordering_patterns.R","COMPLETED",0.09
+"4_product_analysis.R","COMPLETED",0.02
+"5_association_rule.R","COMPLETED",0.07
+"6_customer_segmentation.R","COMPLETED",0.78
+"7_reorder_prediction.R","COMPLETED",1.12
