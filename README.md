@@ -68,13 +68,13 @@ The project is organised into seven sequential R scripts.
 
 ### 4.1 Data Loading and Setup
 
-**Script:** `R/1_setup.R`
+**Script:** `scripts/1_setup.R`
 
 Loads the required R packages and six dataset files. It also checks the availability of the expected files and columns and reports the dimensions of the loaded datasets.
 
 ### 4.2 Exploratory Data Analysis and Data Profiling
 
-**Script:** `R/2_data_profiling.R`
+**Script:** `scripts/2_data_profiling.R`
 
 Examines the structure and quality of the dataset through:
 
@@ -89,7 +89,7 @@ Missing values in `days_since_prior_order` are expected for customers' first rec
 
 ### 4.3 Ordering Patterns
 
-**Script:** `R/3_ordering_patterns.R`
+**Script:** `scripts/3_ordering_patterns.R`
 
 Investigates when customers place orders and how many products they purchase per order.
 
@@ -103,7 +103,7 @@ Key finding: The prior-order data contains 3,214,874 orders, with a mean basket 
 
 ### 4.4 Product Analysis
 
-**Script:** `R/4_product_analysis.R`
+**Script:** `scripts/4_product_analysis.R`
 
 Examines product popularity and purchasing frequency across departments.
 
@@ -119,7 +119,7 @@ Produce was the leading department by purchase frequency.
 
 ### 4.5 Market Basket Analysis and Association Rule Mining
 
-**Script:** `R/5_association_rules.R`
+**Script:** `scripts/5_association_rule.R`
 
 Uses the Apriori algorithm to identify product associations.
 
@@ -149,7 +149,7 @@ Association rules identify purchasing relationships; they do not establish causa
 
 ### 4.6 Customer Segmentation
 
-**Script:** `R/6_customer_segmentation.R`
+**Script:** `scripts/6_customer_segmentation.R`
 
 Applies K-means clustering to group customers according to four behavioural features:
 
@@ -171,7 +171,7 @@ The cluster labels are interpretations of the observed customer behaviour rather
 
 ### 4.7 Repeat Purchase Prediction
 
-**Script:** `R/7_reorder_prediction.R`
+**Script:** `scripts/7_reorder_prediction.R`
 
 Develops and compares two classification models:
 
@@ -226,12 +226,12 @@ Logistic Regression achieved higher accuracy and precision but missed most actua
 ```text
 market-basket-analysis-instacart/
 │
-├── R/
+├── scripts/
 │   ├── 1_setup.R
 │   ├── 2_data_profiling.R
 │   ├── 3_ordering_patterns.R
 │   ├── 4_product_analysis.R
-│   ├── 5_association_rules.R
+│   ├── 5_association_rule.R
 │   ├── 6_customer_segmentation.R
 │   └── 7_reorder_prediction.R
 │
